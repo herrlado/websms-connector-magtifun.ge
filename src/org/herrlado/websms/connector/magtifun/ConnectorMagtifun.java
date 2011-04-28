@@ -170,11 +170,10 @@ public class ConnectorMagtifun extends Connector {
 	private static String getLoginPost(final String username,
 			final String password) throws UnsupportedEncodingException {
 		final StringBuilder sb = new StringBuilder();
-		sb.append("login=bos676");
-		// sb.append(URLEncoder.encode(username, ENCODING));
-		// sb.append("");
-		sb.append("&passwd=kibokum");
-		// sb.append(URLEncoder.encode(password, ENCODING));
+		sb.append("login=");
+		 sb.append(URLEncoder.encode(username, ENCODING));
+		sb.append("&passwd=");
+		 sb.append(URLEncoder.encode(password, ENCODING));
 		// sb.append("");
 		sb.append("&remember=1");
 		// sb

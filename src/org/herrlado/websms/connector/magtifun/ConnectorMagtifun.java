@@ -20,7 +20,7 @@ package org.herrlado.websms.connector.magtifun;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.Calendar;
+import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,13 +49,13 @@ import de.ub0r.android.websms.connector.common.WebSMSException;
  */
 public class ConnectorMagtifun extends Connector {
 	/** Tag for debug output. */
-	private static final String TAG = "WebSMS.magtifun";
+	private static final String TAG = "WebSMS.magtifun.ge";
 
 	/** Login URL, to send Login (POST). */
 	private static final String LOGIN_URL = "http://www.magtifun.ge/index.php?action=login";
 
 	/** Send SMS URL(POST) / Free SMS Count URL(GET). */
-	private static final String SMS_URL = "https://myaccount.myphone.ge/sms/smssend.php";
+	private static final String SMS_URL = "http://www.magtifun.ge/index.php?step=41";
 
 	/** Encoding to use. */
 	private static final String ENCODING = "UTF-8";
@@ -68,16 +68,42 @@ public class ConnectorMagtifun extends Connector {
 	/** This String will be matched if the user is logged in. */
 	private static final String MATCH_LOGIN_SUCCESS = "logout2.gif";
 
+	private static final String RESTRICTED_OPERATOR = "მოცემული მობილური ოპერატორის ქსელში შეტყობინების გაგზავნა შეზღუდულია";
+
+	private static final String WRONG_RECIPIENT = "ადრესატის ნომერი არასწორადაა შეყვანილი";
+
+	private static final String SEND_OK = "შეტყობინება გაგზავნილია ნომერზე";
+
 	/**
 	 * Pattern to extract free sms count from sms page. Looks like.
 	 */
 	private static final Pattern BALANCE_MATCH_PATTERN = Pattern.compile(
 			"<B>უფასო SMS-კრედიტი: (\\d{1,})</B>", Pattern.DOTALL);
 
-	private static final Pattern SEND_CHECK_STATUS_PATTERN = Pattern
-			.compile("message_sent\\.gif");
+	private static final String SEND_CHECK_STATUS_PATTERN = "შეტყობინება გაგზავნილია ნომერზე";
 
 	private static final String PAGE_ENCODING = "UTF-8";
+
+	private static final HashMap<String, String> codes = new HashMap<String, String>();
+
+	private static final String DEFAULT_CODE = "4";
+
+	static {
+		codes.put("99", "1");
+		codes.put("95", "6");
+		codes.put("91", "11");
+		codes.put("98", "5");
+		codes.put("96", "15");
+		codes.put("77", "2");
+		codes.put("93", "3");
+		codes.put("55", "7");
+		codes.put("58", "8");
+		codes.put("57", "14");
+		codes.put("97", "8");
+		codes.put("79", "10");
+		codes.put("71", "12");
+		codes.put("74", "13");
+	}
 
 	// public ConnectorMyphone() {
 	// Log.w(TAG, "ConnectorMyphone");
@@ -144,11 +170,11 @@ public class ConnectorMagtifun extends Connector {
 	private static String getLoginPost(final String username,
 			final String password) throws UnsupportedEncodingException {
 		final StringBuilder sb = new StringBuilder();
-		sb.append("login=");
-		sb.append(URLEncoder.encode(username, ENCODING));
+		sb.append("login=bos676");
+		// sb.append(URLEncoder.encode(username, ENCODING));
 		// sb.append("");
-		sb.append("&passwd=");
-		sb.append(URLEncoder.encode(password, ENCODING));
+		sb.append("&passwd=kibokum");
+		// sb.append(URLEncoder.encode(password, ENCODING));
 		// sb.append("");
 		sb.append("&remember=1");
 		// sb
@@ -170,42 +196,74 @@ public class ConnectorMagtifun extends Connector {
 		final SharedPreferences p = ctx.getPreferences();
 		final StringBuilder sb = new StringBuilder();
 		final String[] to = ctx.getCommand().getRecipients();
-		for (final String r : to) {
-			sb.append(r).append(",");
-		}
-		final StringBuilder sb1 = new StringBuilder();
-		sb1.append("empf=");
-		// sb1.append(URLEncoder.encode(sb.toString(), PAGE_ENCODING));
-		sb1.append(URLEncoder.encode("+4917640232695,", PAGE_ENCODING));
-
-		String sender = Utils.getSender(ctx.getContext(), ctx.getCommand()
-				.getDefSender());
-		sender = URLEncoder.encode(sender, PAGE_ENCODING);
-		sender = "4917640232695";
-		// sb1.append("&mobnum=").append(sender);
-		// sb1.append("&oadc=").append(sender);
-		sb1.append("&anum=").append(sender);
-
-		sb1.append("&msg=");
-		sb1
-				.append(URLEncoder.encode(ctx.getCommand().getText(),
-						PAGE_ENCODING));
-		final long sendLater = ctx.getCommand().getSendLater();
-		// if (sendLater <= 0) {
-		sb1.append("&schedule=").append("now");
-		// } else {
-		final Calendar cal = Calendar.getInstance();
-		cal.setTimeInMillis(sendLater);
-
+		// for (final String r : to) {
+		// sb.append(r).append(",");
 		// }
+		final StringBuilder sb1 = new StringBuilder();
 
-		// sb1.append("&sendsms=true");
-		// sb1.append("&empfcount=1");
-		// sb1.append("&preheader=");
-		sb1.append("&acccode=423408");
-		sb1.append("&pass=6fcbe8933378176a246b4accbdea46ca");
-		sb1.append("&webpass=6fcbe8933378176a246b4accbdea46ca");
-		// sb1.append("&webpass=");
+		final String number = Utils.getRecipientsNumber(to[0]);
+		String codeOption = null;
+		String code = null;
+		final String tomobile = null;
+		if (number.startsWith("8")) {
+			code = number.substring(1, 3);
+			codeOption = codes.get(code);
+		} else if (number.startsWith("00995")) {
+			code = number.substring(4, 6);
+			codeOption = codes.get(code);
+
+		} else if (number.startsWith("+995")) {
+			code = number.substring(3, 5);
+			codeOption = codes.get(code);
+
+		} else {
+			code = DEFAULT_CODE;
+			codeOption = DEFAULT_CODE;
+		}
+
+		if (codeOption == null) {
+			throw new WebSMSException("Unknown code: " + code);
+		}
+
+		sb1.append("tomobile=").append(tomobile);
+		sb1.append("&code=").append(code);
+		sb1.append("&frommobile=");
+		sb1.append("&smscode=NOCODE");
+		sb1.append("&smstext=");
+		sb1
+				.append(URLEncoder.encode("test, tu mova visgan mova aba",
+						ENCODING));
+		// // sb1.append(URLEncoder.encode(sb.toString(), PAGE_ENCODING));
+		// sb1.append(URLEncoder.encode("+4917640232695,", PAGE_ENCODING));
+		//
+		// String sender = Utils.getSender(ctx.getContext(), ctx.getCommand()
+		// .getDefSender());
+		// sender = URLEncoder.encode(sender, PAGE_ENCODING);
+		// sender = "4917640232695";
+		// // sb1.append("&mobnum=").append(sender);
+		// // sb1.append("&oadc=").append(sender);
+		// sb1.append("&anum=").append(sender);
+		//
+		// sb1.append("&msg=");
+		// sb1
+		// .append(URLEncoder.encode(ctx.getCommand().getText(),
+		// PAGE_ENCODING));
+		// final long sendLater = ctx.getCommand().getSendLater();
+		// // if (sendLater <= 0) {
+		// sb1.append("&schedule=").append("now");
+		// // } else {
+		// final Calendar cal = Calendar.getInstance();
+		// cal.setTimeInMillis(sendLater);
+		//
+		// // }
+		//
+		// // sb1.append("&sendsms=true");
+		// // sb1.append("&empfcount=1");
+		// // sb1.append("&preheader=");
+		// sb1.append("&acccode=423408");
+		// sb1.append("&pass=6fcbe8933378176a246b4accbdea46ca");
+		// sb1.append("&webpass=6fcbe8933378176a246b4accbdea46ca");
+		// // sb1.append("&webpass=");
 
 		return sb1.toString();
 	}
@@ -221,7 +279,6 @@ public class ConnectorMagtifun extends Connector {
 	 */
 	private boolean login(final ConnectorContext ctx) throws WebSMSException {
 		try {
-
 			final SharedPreferences p = ctx.getPreferences();
 			final HttpPost request = createPOST(LOGIN_URL, getLoginPost(p
 					.getString(Preferences.USERNAME, ""), p.getString(
@@ -331,23 +388,17 @@ public class ConnectorMagtifun extends Connector {
 
 		final String body = Utils.stream2str(response.getEntity().getContent());
 
-		final Matcher m = SEND_CHECK_STATUS_PATTERN.matcher(body);
-		final boolean found = m.find();
-		if (!found || m.groupCount() != 2) {
+		final boolean sent = body.contains(SEND_CHECK_STATUS_PATTERN);
+		if (!sent) {
 			// should not happen
-			Log.w("WebSMS.ConnectorArcor", body);
+			Log.w(TAG, body);
 			throw new Exception(ctx.getContext().getString(
 					R.string.log_unknow_status_after_send));
 		}
 
-		final String status = m.group(1);
-		// ok, message sent!
-		if (status.equals("hint")) {
-			this.notifyFreeCount(ctx, body);
-			return true;
-		}
-		// warning or error
-		throw new Exception(m.group(2));
+		// TODO hier activation handling
+		return true;
+
 	}
 
 	/**

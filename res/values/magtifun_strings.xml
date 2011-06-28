@@ -19,9 +19,19 @@
 <resources>
 	<string name="app_name">WebSMS magtifun.ge Connector</string>
 	<string name="app_version">1.0</string>
-	<string name="myphone_author">Lado Kumsiashvili &lt;herrlado@gmail.com&gt;</string>
-	<string name="myphone_name">magtifun.ge</string>
+	<string name="con_author">Lado Kumsiashvili &lt;herrlado@gmail.com&gt;</string>
+	<string name="con_name">magtifun.ge</string>
 	<string name="preferences">Preferences - magtifun.ge</string>
 	<string name="enable">Enable magtifun.ge</string>
 	<string name="log_unknow_status_after_send">The Message was probably not be sent. Please contact the Developer!</string>
+	<string name="magtifun.ge_hint">Create new magtifun.ge account (only for magti customers!)</string>
+	<string name="magtifun.ge_url">http://www.magtifun.ge/index.php?page=8&amp;lang=ge</string>
+	<string name="error_long_for_ucs2">The message is too long. Allowed are 70 chars(ucs2). Consider enabling Splitting long messages!</string>
+	<string name="error_long_for_gsm">The message is too long. Allowed are 160 chars(gsm). Consider enabling Splitting long messages!</string>
+	<string name="sms_response_not_enough_credit">კრედიტების რაოდენობა არ არის საკმარისი</string>
+	<string name="sms_response_max_messages">მაქსიმუმ 3 გზავნილი</string>
+	<string name="sms_response_max_recipients">მაქსიმუმ 5 ადრესატი</string>
+	<string name="sms_response_not_enough_money">ანგარიშზე არსებული თანხა არ არის საკმარისი</string>
+	<string name="sms_response_fill_message">ტექსტი ცარიელია</string>
+	<string name="sms_response_incorrect_mobile">ნომერი არასწორია</string>
 </resources>

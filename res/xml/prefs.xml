@@ -17,7 +17,8 @@
 		not, see <http://www.gnu.org/licenses/>.
 	-->
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
-	android:title="@string/preferences">
+		android:title="@string/preferences">
+	
 	<CheckBoxPreference android:key="enable"   android:title="@string/enable" />
 	
 	<EditTextPreference android:key="username" android:title="@string/username_"
@@ -28,13 +29,9 @@
 		android:inputType="textPassword" android:title="@string/password_"
 		android:dialogTitle="@string/password_" android:dependency="enable" />
 	
-	<CheckBoxPreference android:key="use_default_sender"
-		android:defaultValue="true" android:title="@string/use_derfault_sender_"
-		android:summary="@string/use_derfault_sender_hint"
-		android:disableDependentsState="true" android:dependency="enable" />
-	
-	<EditTextPreference android:key="custom_sender"
-		android:inputType="phone" android:title="@string/custom_sender_"
-		android:dialogTitle="@string/custom_sender_" android:summary="@string/sender_hint"
-		android:dependency="use_default_sender" />
+	<PreferenceScreen android:title="@string/create_account_"
+		android:summary="@string/magtifun.ge_hint">
+		<intent android:data="@string/magtifun.ge_url" android:action="android.intent.action.VIEW"/>
+	</PreferenceScreen>
+
 </PreferenceScreen>

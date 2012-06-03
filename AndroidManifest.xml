@@ -17,7 +17,7 @@
 		not, see <http://www.gnu.org/licenses/>.
 	-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-	android:versionCode="11" android:versionName="1.1" package="org.herrlado.websms.connector.magtifunge">
+	android:versionCode="20" android:versionName="2.0" package="org.herrlado.websms.connector.magtifunge">
 	<application android:label="@string/app_name" android:icon="@drawable/icon"
 		android:debuggable="false">
 

@@ -18,12 +18,15 @@
  */
 package org.herrlado.websms.connector.magtifunge;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.entity.StringEntity;
@@ -40,8 +43,11 @@ import de.ub0r.android.websms.connector.common.WebSMSException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.drawable.BitmapDrawable;
 import android.preference.PreferenceManager;
+import android.text.TextUtils;
 import android.util.Log;
+import android.util.Pair;
 
 /**
  * Receives commands coming as broadcast from WebSMS.
@@ -54,11 +60,24 @@ public class ConnectorMagtifun extends Connector {
 
 	/** Login URL, to send Login (POST). */
 	private static final String LOGIN_URL = "http://www.magtifun.ge/index.php?page=11&lang=ge";
-	
+
 	private static final String BALANCE_URL = "http://www.magtifun.ge/index.php?page=2&lang=ge";
 
 	/** Send SMS URL(POST) / Free SMS Count URL(GET). */
 	private static final String SMS_URL = "http://www.magtifun.ge/scripts/sms_send.php";
+
+	private static final String URL_CAPTCHA = "http://www.magtifun.ge/scripts/verificationimage.php?num=";
+
+	private static String DEFAULT_URL_CAPTCHA_PARAMETER = "2636";
+
+	/** Object to sync with. */
+	private static final Object CAPTCHA_SYNC = new Object();
+
+	/** Timeout for entering the captcha. */
+	private static final long CAPTCHA_TIMEOUT = 60000;
+
+	/** Solved Captcha. */
+	private static String captchaSolve = null;
 
 	/** Encoding to use. */
 	private static final String ENCODING = "UTF-8";
@@ -88,6 +107,8 @@ public class ConnectorMagtifun extends Connector {
 
 	private static final String PARAM_message_body = "message_body";
 
+	private static final String PARAM_verif_box = "verif_box";
+
 	private static final String PARAM_act = "act";
 
 	private static final String PARAM_act_VALUE = "1";
@@ -99,6 +120,18 @@ public class ConnectorMagtifun extends Connector {
 	private static final int MAX_LENGTH = 3 * 146;
 
 	private static final int MAX_LENGTH_UCS2 = 3 * 57;
+
+	private static final Pattern CAPTCHA_NUM_PATTERN = Pattern
+			.compile("verificationimage.php\\?num=(.*?)\"");
+
+	private String findCaptchaNum(String body) {
+		Matcher m = CAPTCHA_NUM_PATTERN.matcher(body);
+		if (m.find()) {
+			return m.group(1);
+		}
+
+		return null;
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -115,7 +148,8 @@ public class ConnectorMagtifun extends Connector {
 		c.setCapabilities(ConnectorSpec.CAPABILITIES_UPDATE
 				| ConnectorSpec.CAPABILITIES_SEND
 				| ConnectorSpec.CAPABILITIES_PREFS);
-		c.addSubConnector(c.getName(),c.getName(), SubConnectorSpec.FEATURE_MULTIRECIPIENTS);
+		c.addSubConnector(c.getName(), c.getName(),
+				SubConnectorSpec.FEATURE_MULTIRECIPIENTS);
 		return c;
 	}
 
@@ -168,21 +202,22 @@ public class ConnectorMagtifun extends Connector {
 	 * 
 	 * @param ctx
 	 *            {@link ConnectorContext}
+	 * @param captcha
 	 * @return array of params
 	 * @throws Exception
 	 *             if an error occures.
 	 */
-	private String getSmsPost(final ConnectorContext ctx) throws Exception {
+	private String getSmsPost(final ConnectorContext ctx, String captcha)
+			throws Exception {
 
 		final String[] tos = ctx.getCommand().getRecipients();
-			
-		
-		StringBuffer  recipient = new StringBuffer();
-			String sep = "";
-			for(String to : tos){
-				recipient.append(sep).append(Utils.getRecipientsNumber(to).trim());
-				sep = ",";
-			}
+
+		StringBuffer recipient = new StringBuffer();
+		String sep = "";
+		for (String to : tos) {
+			recipient.append(sep).append(Utils.getRecipientsNumber(to).trim());
+			sep = ",";
+		}
 
 		String text = ctx.getCommand().getText();
 
@@ -205,6 +240,9 @@ public class ConnectorMagtifun extends Connector {
 		sb.append("&");
 		sb.append(PARAM_message_body).append("=")
 				.append(URLEncoder.encode(text, PAGE_ENCODING));
+		sb.append("&");
+		sb.append(PARAM_verif_box).append("=")
+				.append(URLEncoder.encode(captcha, PAGE_ENCODING));
 		return sb.toString();
 	}
 
@@ -217,7 +255,9 @@ public class ConnectorMagtifun extends Connector {
 	 * @throws WebSMSException
 	 *             if any Exception occures.
 	 */
-	private boolean login(final ConnectorContext ctx) throws WebSMSException {
+	private Pair<Boolean, String> login(final ConnectorContext ctx)
+			throws WebSMSException {
+		String content;
 		try {
 			final SharedPreferences p = ctx.getPreferences();
 			final HttpPost request = createPOST(
@@ -225,18 +265,17 @@ public class ConnectorMagtifun extends Connector {
 					getLoginPost(p.getString(Preferences.USERNAME, ""),
 							p.getString(Preferences.PASSWORD, "")));
 			final HttpResponse response = ctx.getClient().execute(request);
-			final String cutContent = Utils.stream2str(response.getEntity()
-					.getContent());
-			if (cutContent.indexOf(MATCH_LOGIN_SUCCESS) == -1) {
+			content = Utils.stream2str(response.getEntity().getContent());
+			if (content.indexOf(MATCH_LOGIN_SUCCESS) == -1) {
 				throw new WebSMSException(ctx.getContext(), R.string.error_pw);
 			}
 
-			notifyFreeCount(ctx, cutContent);
+			notifyFreeCount(ctx, content);
 
 		} catch (final Exception e) {
 			throw new WebSMSException(e.getMessage());
 		}
-		return true;
+		return Pair.create(true, content);
 	}
 
 	/**
@@ -281,32 +320,34 @@ public class ConnectorMagtifun extends Connector {
 	 * @throws WebSMSException
 	 *             on an error
 	 */
-//	private void updateBalance(final ConnectorContext ctx)
-//			throws WebSMSException {
-//		try {
-//			final HttpResponse response = ctx.getClient().execute(
-//					new HttpGet(SMS_URL));
-//			this.notifyFreeCount(ctx,
-//					Utils.stream2str(response.getEntity().getContent()));
-//
-//		} catch (final Exception ex) {
-//			throw new WebSMSException(ex.getMessage());
-//		}
-//	}
+	// private void updateBalance(final ConnectorContext ctx)
+	// throws WebSMSException {
+	// try {
+	// final HttpResponse response = ctx.getClient().execute(
+	// new HttpGet(SMS_URL));
+	// this.notifyFreeCount(ctx,
+	// Utils.stream2str(response.getEntity().getContent()));
+	//
+	// } catch (final Exception ex) {
+	// throw new WebSMSException(ex.getMessage());
+	// }
+	// }
 
 	/**
 	 * Sends an sms via HTTP POST.
 	 * 
 	 * @param ctx
 	 *            {@link ConnectorContext}
+	 * @param captcha
 	 * @return successfull?
 	 * @throws WebSMSException
 	 *             on an error
 	 */
-	private boolean sendSms(final ConnectorContext ctx) throws WebSMSException {
+	private boolean sendSms(final ConnectorContext ctx, String captcha)
+			throws WebSMSException {
 		try {
 			final HttpResponse response = ctx.getClient().execute(
-					createPOST(SMS_URL, this.getSmsPost(ctx)));
+					createPOST(SMS_URL, this.getSmsPost(ctx, captcha)));
 			return this.afterSmsSent(ctx, response);
 		} catch (final Exception ex) {
 			throw new WebSMSException(ex.getMessage());
@@ -335,25 +376,23 @@ public class ConnectorMagtifun extends Connector {
 			throw new WebSMSException(ctx.getContext().getString(
 					R.string.log_unknow_status_after_send));
 		}
-		
-		
-		
+
 		String msg = null;
-		if (body.equals("success\n") ) {
+		if (body.equals("success\n")) {
 			login(ctx);
 			return true;
 		}
 		Context c = ctx.getContext();
-		 
-		if(body.equals("not_enough_credit\n")){
+
+		if (body.equals("not_enough_credit\n")) {
 			body = c.getString(R.string.sms_response_not_enough_credit);
-		} else if (body.equals("max_messages\n")){
+		} else if (body.equals("max_messages\n")) {
 			body = c.getString(R.string.sms_response_max_messages);
-		} else if (body.equals("max_recipients\n")){
+		} else if (body.equals("max_recipients\n")) {
 			body = c.getString(R.string.sms_response_max_recipients);
-		} else if (body.equals("not_enough_money\n")){
+		} else if (body.equals("not_enough_money\n")) {
 			body = c.getString(R.string.sms_response_not_enough_money);
-		} else if(body.equals("incorrect_mobile\n")){
+		} else if (body.equals("incorrect_mobile\n")) {
 			body = c.getString(R.string.sms_response_incorrect_mobile);
 		} else {
 			body = msg;
@@ -394,9 +433,91 @@ public class ConnectorMagtifun extends Connector {
 	protected final void doSend(final Context context, final Intent intent)
 			throws WebSMSException {
 		final ConnectorContext ctx = ConnectorContext.create(context, intent);
-		if (this.login(ctx)) {
-			this.sendSms(ctx);
+		Pair<Boolean, String> login = login(ctx);
+		if (login.first) {
+			String captcha = null;
+			try {
+				captcha = solveCaptcha(ctx, login.second);
+			} catch (IOException iox) {
+				throw new WebSMSException(iox);
+			}
+			if (captcha == null) {
+				throw new WebSMSException("Captcha not solved");
+			}
+			this.sendSms(ctx, captcha);
 		}
 
 	}
+
+	/**
+	 * Load captcha and wait for user input to solve it.
+	 * 
+	 * @param second
+	 * 
+	 * @param context
+	 *            {@link Context}
+	 * @param flow
+	 *            _flowExecutionKey
+	 * @return true if captcha was solved
+	 * @throws IOException
+	 *             IOException
+	 */
+	private String solveCaptcha(final ConnectorContext ctx, String body)
+			throws IOException {
+
+		String url = URL_CAPTCHA;
+		
+		String num  = findCaptchaNum(body);
+		if(TextUtils.isEmpty(num) == false){
+			url = url + num;
+		} else {
+			url = url + DEFAULT_URL_CAPTCHA_PARAMETER;
+		}
+
+		HttpGet cap = new HttpGet(url);
+		cap.addHeader("Referer",
+				"http://www.magtifun.ge/index.php?page=2&lang=ge");
+		cap.setHeader("User-Agent", FAKE_USER_AGENT);
+		HttpResponse response = ctx.getClient().execute(cap);
+		int resp = response.getStatusLine().getStatusCode();
+		if (resp != HttpURLConnection.HTTP_OK) {
+			throw new WebSMSException(ctx.getContext(), R.string.error_http, ""
+					+ resp);
+		}
+		BitmapDrawable captcha = new BitmapDrawable(response.getEntity()
+				.getContent());
+		final Intent intent = new Intent(Connector.ACTION_CAPTCHA_REQUEST);
+		intent.putExtra(Connector.EXTRA_CAPTCHA_DRAWABLE, captcha.getBitmap());
+		captcha = null;
+		Context context = ctx.getContext();
+		this.getSpec(context).setToIntent(intent);
+		context.sendBroadcast(intent);
+		try {
+			synchronized (CAPTCHA_SYNC) {
+				CAPTCHA_SYNC.wait(CAPTCHA_TIMEOUT);
+			}
+		} catch (InterruptedException e) {
+			Log.e(TAG, null, e);
+			return null;
+		}
+		if (captchaSolve == null) {
+			return captchaSolve;
+		}
+		// got user response, try to solve captcha
+		Log.d(TAG, "got solved captcha: " + captchaSolve);
+
+		return captchaSolve;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	protected final void gotSolvedCaptcha(final Context context,
+			final String solvedCaptcha) {
+		captchaSolve = solvedCaptcha;
+		synchronized (CAPTCHA_SYNC) {
+			CAPTCHA_SYNC.notify();
+		}
+	}
+
 }
